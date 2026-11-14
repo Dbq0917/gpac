@@ -34,6 +34,156 @@ static Bool hls_output_contains(FILE *output, const char *marker)
 	return strstr(text, marker) ? GF_TRUE : GF_FALSE;
 }
 
+unittest(mpd_seek_segment_timeline_irregular)
+{
+	GF_MPD_Period period = {0};
+	GF_MPD_AdaptationSet set = {0};
+	GF_MPD_Representation rep = {0};
+	GF_MPD_SegmentTemplate template = {0};
+	GF_MPD_SegmentTimeline timeline = {0};
+	GF_MPD_SegmentTimelineEntry first = {0}, second = {0}, third = {0};
+	u32 segment_index;
+	Double seek_time, segment_duration;
+
+	first.start_time = 1000;
+	first.duration = 1000;
+	first.repeat_count = 1;
+	second.start_time = 5000;
+	second.duration = 2000;
+	second.repeat_count = 2;
+	third.start_time = 11000;
+	third.duration = 3000;
+
+	timeline.entries = gf_list_new();
+	assert_not_null(timeline.entries);
+	gf_list_add(timeline.entries, &first);
+	gf_list_add(timeline.entries, &second);
+	gf_list_add(timeline.entries, &third);
+	template.timescale = 1000;
+	template.segment_timeline = &timeline;
+	period.segment_template = &template;
+
+	/* The first segment starts at 1 s, not at 0 s. The seek must use the
+	 * timeline start times instead of walking from segment zero. */
+	assert_equal(gf_mpd_seek_in_period(1.0, MPD_SEEK_PREV, &period, &set, &rep,
+		&segment_index, &seek_time, &segment_duration), GF_OK, "%d");
+	assert_equal(segment_index, 0, "%u");
+	assert_equal(seek_time, 1.0, "%g");
+	assert_equal(segment_duration, 1.0, "%g");
+
+	/* Irregular segment durations must not be treated as a fixed cadence. */
+	assert_equal(gf_mpd_seek_in_period(7.5, MPD_SEEK_PREV, &period, &set, &rep,
+		&segment_index, &seek_time, &segment_duration), GF_OK, "%d");
+	assert_equal(segment_index, 3, "%u");
+	assert_equal(seek_time, 7.0, "%g");
+	assert_equal(segment_duration, 2.0, "%g");
+
+	assert_equal(gf_mpd_seek_in_period(8.9, MPD_SEEK_NEAREST, &period, &set, &rep,
+		&segment_index, &seek_time, &segment_duration), GF_OK, "%d");
+	assert_equal(segment_index, 4, "%u");
+	assert_equal(seek_time, 9.0, "%g");
+	assert_equal(segment_duration, 2.0, "%g");
+
+	/* Nearest may cross a timeline entry, whose duration is not the same as
+	 * the previous entry. */
+	assert_equal(gf_mpd_seek_in_period(10.99, MPD_SEEK_NEAREST, &period, &set, &rep,
+		&segment_index, &seek_time, &segment_duration), GF_OK, "%d");
+	assert_equal(segment_index, 5, "%u");
+	assert_equal(seek_time, 11.0, "%g");
+	assert_equal(segment_duration, 3.0, "%g");
+
+	/* Presentation time offsets shift the timeline into media presentation
+	 * time before a seek comparison is made. */
+	template.presentation_time_offset = 1000;
+	assert_equal(gf_mpd_seek_in_period(6.5, MPD_SEEK_PREV, &period, &set, &rep,
+		&segment_index, &seek_time, &segment_duration), GF_OK, "%d");
+	assert_equal(segment_index, 3, "%u");
+	assert_equal(seek_time, 6.0, "%g");
+	assert_equal(segment_duration, 2.0, "%g");
+
+	gf_list_del(timeline.entries);
+}
+
+unittest(mpd_seek_repeated_timeline_and_fixed_duration)
+{
+	GF_MPD_Period period = {0};
+	GF_MPD_AdaptationSet set = {0};
+	GF_MPD_Representation rep = {0};
+	GF_MPD_SegmentTemplate template = {0};
+	GF_MPD_SegmentTimeline timeline = {0};
+	GF_MPD_SegmentTimelineEntry entry = {0};
+	u32 segment_index;
+	Double seek_time, segment_duration;
+	u64 segment_start, segment_duration_ts;
+	u32 timescale;
+
+	entry.duration = 1000;
+	entry.repeat_count = 3599;
+	timeline.entries = gf_list_new();
+	assert_not_null(timeline.entries);
+	gf_list_add(timeline.entries, &entry);
+	template.timescale = 1000;
+	template.segment_timeline = &timeline;
+	period.segment_template = &template;
+
+	assert_equal(gf_mpd_seek_in_period(3599.5, MPD_SEEK_PREV, &period, &set, &rep,
+		&segment_index, &seek_time, &segment_duration), GF_OK, "%d");
+	assert_equal(segment_index, 3599, "%u");
+	assert_equal(seek_time, 3599.0, "%g");
+	assert_equal(segment_duration, 1.0, "%g");
+	assert_equal(gf_mpd_get_segment_start_time_with_timescale(3599, &period, &set, &rep,
+		&segment_start, &segment_duration_ts, &timescale), GF_OK, "%d");
+	assert_equal(segment_start, (u64) 3599 * 1000, LLU);
+	assert_equal(segment_duration_ts, 1000, LLU);
+	assert_equal(timescale, 1000, "%u");
+
+	template.segment_timeline = NULL;
+	template.duration = 2000;
+	assert_equal(gf_mpd_seek_in_period(60.0, MPD_SEEK_PREV, &period, &set, &rep,
+		&segment_index, &seek_time, &segment_duration), GF_OK, "%d");
+	assert_equal(segment_index, 30, "%u");
+	assert_equal(seek_time, 60.0, "%g");
+	assert_equal(segment_duration, 2.0, "%g");
+
+	gf_list_del(timeline.entries);
+}
+
+unittest(mpd_seek_segment_list_irregular)
+{
+	GF_MPD_Period period = {0};
+	GF_MPD_AdaptationSet set = {0};
+	GF_MPD_Representation rep = {0};
+	GF_MPD_SegmentList list = {0};
+	GF_MPD_SegmentURL segments[3] = {{0}};
+	u32 segment_index;
+	Double seek_time, segment_duration;
+
+	segments[0].duration = 1000;
+	segments[1].duration = 2000;
+	segments[2].duration = 3000;
+	list.timescale = 1000;
+	list.segment_URLs = gf_list_new();
+	assert_not_null(list.segment_URLs);
+	gf_list_add(list.segment_URLs, &segments[0]);
+	gf_list_add(list.segment_URLs, &segments[1]);
+	gf_list_add(list.segment_URLs, &segments[2]);
+	rep.segment_list = &list;
+
+	assert_equal(gf_mpd_seek_in_period(4.0, MPD_SEEK_PREV, &period, &set, &rep,
+		&segment_index, &seek_time, &segment_duration), GF_OK, "%d");
+	assert_equal(segment_index, 2, "%u");
+	assert_equal(seek_time, 3.0, "%g");
+	assert_equal(segment_duration, 3.0, "%g");
+
+	assert_equal(gf_mpd_seek_in_period(2.9, MPD_SEEK_NEAREST, &period, &set, &rep,
+		&segment_index, &seek_time, &segment_duration), GF_OK, "%d");
+	assert_equal(segment_index, 2, "%u");
+	assert_equal(seek_time, 3.0, "%g");
+	assert_equal(segment_duration, 3.0, "%g");
+
+	gf_list_del(list.segment_URLs);
+}
+
 unittest(mpd_hls_scte35_dynamic_rewrite_preserves_cues)
 {
 	GF_MPD mpd = {0};
