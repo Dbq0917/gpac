@@ -251,6 +251,7 @@ GF_Err cprt_box_read(GF_Box *s,GF_BitStream *bs)
 		ptr->packedLanguageCode[2] = 'd';
 	}
 	if (ptr->size) {
+		if (ptr->size >= GF_UINT_MAX) return GF_ISOM_INVALID_FILE;
 		u32 bytesToRead = (u32) ptr->size;
 		ptr->notice = (char*)gf_malloc((bytesToRead+1) * sizeof(char));
 		if (ptr->notice == NULL) return GF_OUT_OF_MEM;
@@ -318,6 +319,10 @@ GF_Err kind_box_read(GF_Box *s,GF_BitStream *bs)
 {
 	GF_KindBox *ptr = (GF_KindBox *)s;
 
+	if (ptr->size >= GF_UINT_MAX) {
+		GF_LOG(GF_LOG_ERROR, GF_LOG_CONTAINER, ("[iso file] Invalid size "LLU" in kind box\n", ptr->size));
+		return GF_ISOM_INVALID_FILE;
+	}
 	if (ptr->size) {
 		u32 bytesToRead = (u32) ptr->size;
 		char *data;
@@ -4020,20 +4025,22 @@ void elng_box_del(GF_Box *s)
 GF_Err elng_box_read(GF_Box *s, GF_BitStream *bs)
 {
 	GF_ExtendedLanguageBox *ptr = (GF_ExtendedLanguageBox *)s;
+	u32 str_size;
 
-	if (ptr && ptr->size > GF_UINT_MAX)
+	if (ptr && ptr->size >= GF_UINT_MAX)
 		return GF_ISOM_INVALID_FILE;
 
 	if (ptr->size) {
-		ptr->extended_language = (char*)gf_malloc((u32) ptr->size);
+		str_size = (u32) ptr->size;
+		ptr->extended_language = (char*)gf_malloc(str_size);
 		if (ptr->extended_language == NULL) return GF_OUT_OF_MEM;
-		gf_bs_read_data(bs, ptr->extended_language, (u32) ptr->size);
+		gf_bs_read_data(bs, ptr->extended_language, str_size);
 		/*safety check in case the string is not null-terminated*/
-		if (ptr->extended_language[ptr->size-1]) {
-			char *str = (char*)gf_malloc((u32) ptr->size + 1);
+		if (ptr->extended_language[str_size-1]) {
+			char *str = (char*)gf_malloc(str_size + 1);
 			if (!str) return GF_OUT_OF_MEM;
-			memcpy(str, ptr->extended_language, (u32) ptr->size);
-			str[ptr->size] = 0;
+			memcpy(str, ptr->extended_language, str_size);
+			str[str_size] = 0;
 			gf_free(ptr->extended_language);
 			ptr->extended_language = str;
 		}
@@ -9612,14 +9619,17 @@ void txtc_box_del(GF_Box *s)
 GF_Err txtc_box_read(GF_Box *s, GF_BitStream *bs)
 {
 	GF_TextConfigBox *ptr = (GF_TextConfigBox*)s;
-	if ((u32)ptr->size >= (u32)0xFFFFFFFF) {
-		GF_LOG(GF_LOG_ERROR, GF_LOG_CONTAINER, ("[iso file] Invalid size %llu in txtc box\n", ptr->size));
+	u32 str_size;
+
+	if (ptr->size >= GF_UINT_MAX) {
+		GF_LOG(GF_LOG_ERROR, GF_LOG_CONTAINER, ("[iso file] Invalid size "LLU" in txtc box\n", ptr->size));
 		return GF_ISOM_INVALID_FILE;
 	}
-	ptr->config = (char *)gf_malloc(sizeof(char)*((u32) ptr->size+1));
+	str_size = (u32) ptr->size;
+	ptr->config = (char *)gf_malloc(sizeof(char)*(str_size+1));
 	if (!ptr->config) return GF_OUT_OF_MEM;
-	gf_bs_read_data(bs, ptr->config, (u32) ptr->size);
-	ptr->config[ptr->size] = 0;
+	gf_bs_read_data(bs, ptr->config, str_size);
+	ptr->config[str_size] = 0;
 	return GF_OK;
 }
 
@@ -14938,14 +14948,17 @@ void svhd_box_del(GF_Box *s)
 GF_Err svhd_box_read(GF_Box *s, GF_BitStream *bs)
 {
 	GF_SphericalVideoInfoBox *ptr = (GF_SphericalVideoInfoBox *)s;
-	if ((u32)ptr->size >= (u32)0xFFFFFFFF) {
-		GF_LOG(GF_LOG_ERROR, GF_LOG_CONTAINER, ("[iso file] Invalid size %llu in svhd box\n", ptr->size));
+	u32 str_size;
+
+	if (ptr->size >= GF_UINT_MAX) {
+		GF_LOG(GF_LOG_ERROR, GF_LOG_CONTAINER, ("[iso file] Invalid size "LLU" in svhd box\n", ptr->size));
 		return GF_ISOM_INVALID_FILE;
 	}
-	ptr->string = gf_malloc(sizeof(char) * ((u32) ptr->size+1));
+	str_size = (u32) ptr->size;
+	ptr->string = gf_malloc(sizeof(char) * (str_size+1));
 	if (!ptr->string) return GF_OUT_OF_MEM;
-	gf_bs_read_data(bs, ptr->string, (u32) ptr->size);
-	ptr->string[ptr->size] = 0;
+	gf_bs_read_data(bs, ptr->string, str_size);
+	ptr->string[str_size] = 0;
 	return GF_OK;
 }
 

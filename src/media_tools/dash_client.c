@@ -7106,10 +7106,25 @@ retry_pending_rep:
 
 	//setup SRDs
 	for (as_i = 0; as_i<gf_list_count(dash->SRDs); as_i++) {
-		u32 cols[10], rows[10], nb_srd_it=0;
+		u32 *cols = NULL, *rows = NULL;
+		u32 nb_srd_groups = 0, nb_srd_it=0;
 		struct _dash_srd_desc *srd = gf_list_get(dash->SRDs, as_i);
 
 		srd->srd_nb_rows = srd->srd_nb_cols = 0;
+
+		for (j=0; j < gf_list_count(dash->groups); j++) {
+			GF_DASH_Group *dg = gf_list_get(dash->groups, j);
+			if (dg->srd_desc == srd) nb_srd_groups++;
+		}
+		if (nb_srd_groups) {
+			cols = gf_malloc(sizeof(u32) * nb_srd_groups);
+			rows = gf_malloc(sizeof(u32) * nb_srd_groups);
+			if (!cols || !rows) {
+				if (cols) gf_free(cols);
+				if (rows) gf_free(rows);
+				return GF_OUT_OF_MEM;
+			}
+		}
 
 		//sort SRDs
 		for (j=1; j < gf_list_count(dash->groups); j++) {
@@ -7189,6 +7204,8 @@ retry_pending_rep:
 
 		}
 		gf_dash_set_tiles_quality(dash, srd, GF_TRUE);
+		if (cols) gf_free(cols);
+		if (rows) gf_free(rows);
 	}
 
 	period = gf_list_get(dash->mpd->periods, dash->active_period_index);

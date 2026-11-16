@@ -107,6 +107,59 @@ unittest(dash_update_manifest_timeline_position)
 	gf_file_delete(path);
 }
 
+static void write_mpd_srd_tiles(const char *path, u32 count)
+{
+	u32 i;
+	FILE *f = gf_fopen(path, "w");
+	gf_fprintf(f, "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\" type=\"static\" mediaPresentationDuration=\"PT2S\" "
+		"minBufferTime=\"PT2S\" profiles=\"urn:mpeg:dash:profile:isoff-live:2011\">"
+		"<Period id=\"1\" start=\"PT0S\">");
+	for (i=0; i<count; i++) {
+		gf_fprintf(f, "<AdaptationSet mimeType=\"video/mp4\" codecs=\"avc1.64001E\" segmentAlignment=\"true\">"
+			"<EssentialProperty schemeIdUri=\"urn:mpeg:dash:srd:2014\" value=\"1,%u,0,4,4,%u,4\"/>"
+			"<Representation id=\"tile%u\" bandwidth=\"100000\" width=\"4\" height=\"4\">"
+			"<SegmentTemplate media=\"tile%u-$Number$.m4s\" initialization=\"tile%u-init.mp4\" duration=\"2\"/>"
+			"</Representation></AdaptationSet>", i*4, count*4, i, i, i);
+	}
+	gf_fprintf(f, "</Period></MPD>");
+	gf_fclose(f);
+}
+
+unittest(dash_srd_more_than_ten_columns)
+{
+	const char *path = "ut-dash-srd16.mpd";
+	Bool seen[16] = {0};
+	GF_DASHFileIO io = {0};
+	GF_DashClient *dash;
+	struct _dash_srd_desc *srd;
+	u32 i;
+
+	io.on_dash_event = dash_event;
+	dash = gf_dash_new(&io, 0, 0, GF_FALSE, GF_FALSE, GF_DASH_SELECT_QUALITY_LOWEST, 0);
+	write_mpd_srd_tiles(path, 16);
+	assert_equal(gf_dash_open(dash, path), GF_OK, "%d");
+	assert_equal(gf_dash_setup_period(dash), GF_OK, "%d");
+	assert_equal(gf_list_count(dash->SRDs), 1, "%u");
+	srd = gf_list_get(dash->SRDs, 0);
+	assert_not_null(srd);
+	if (srd) {
+		assert_equal(srd->srd_nb_cols, 16, "%u");
+		assert_equal(srd->srd_nb_rows, 1, "%u");
+	}
+	for (i=0; i<gf_list_count(dash->groups); i++) {
+		GF_DASH_Group *group = gf_list_get(dash->groups, i);
+		assert_true(group->srd_desc == srd);
+		assert_true(group->srd_col_idx < 16);
+		if (group->srd_col_idx < 16)
+			seen[group->srd_col_idx] = GF_TRUE;
+	}
+	for (i=0; i<16; i++)
+		assert_true(seen[i]);
+	gf_dash_close(dash);
+	gf_dash_del(dash);
+	gf_file_delete(path);
+}
+
 #endif //GPAC_DISABLE_DASHIN
 
 #ifndef GPAC_DISABLE_DASHIN
