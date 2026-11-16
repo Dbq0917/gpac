@@ -308,3 +308,46 @@ unittest(av1_layer_obu_framing)
 	assert_equal(bs_av1_obu_inspect(unterminated, sizeof(unterminated), &obu), GF_NON_COMPLIANT_BITSTREAM, "%d");
 #endif
 }
+
+unittest(av1_obu_leb128_64bit_size)
+{
+#if !defined(GPAC_DISABLE_AV_PARSERS)
+	/*OBU_TEMPORAL_DELIMITER (type 2), has_size_field=1*/
+	const u8 header = 0x12;
+	/*LEB128 encoding of 0x100000040: a length that does not fit in 32 bits.
+	  Trailing payload bytes are present so the failure is the size-limit
+	  rejection, not an incomplete-buffer error.*/
+	const u8 leb_oversized[] = { 0xC0, 0x80, 0x80, 0x80, 0x10 };
+	const u8 leb_max_u32[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0x0F };
+	u8 data[16];
+	GF_BitStream *bs;
+	AV1State *state;
+	ObuType obu_type;
+	u64 obu_size;
+
+	state = (AV1State *) gf_malloc(sizeof(AV1State));
+	assert_true(state != NULL);
+	gf_av1_init_state(state);
+
+	/*boundary value 0xFFFFFFFF stays representable and must not be rejected
+	  solely on the size-limit check*/
+	memcpy(data, &header, 1);
+	memcpy(data + 1, leb_max_u32, sizeof(leb_max_u32));
+	bs = gf_bs_new(data, sizeof(data), GF_BITSTREAM_READ);
+	obu_size = 0;
+	gf_av1_parse_obu(bs, &obu_type, &obu_size, NULL, state);
+	assert_equal(obu_type, OBU_TEMPORAL_DELIMITER, "%d");
+	gf_bs_del(bs);
+
+	/*value above UINT32_MAX must be rejected instead of truncated to 0x40*/
+	memcpy(data, &header, 1);
+	memcpy(data + 1, leb_oversized, sizeof(leb_oversized));
+	bs = gf_bs_new(data, sizeof(data), GF_BITSTREAM_READ);
+	obu_size = 0;
+	assert_equal(gf_av1_parse_obu(bs, &obu_type, &obu_size, NULL, state), GF_NON_COMPLIANT_BITSTREAM, "%d");
+	assert_true(obu_size != 0x40);
+	gf_bs_del(bs);
+
+	gf_free(state);
+#endif
+}

@@ -2796,7 +2796,11 @@ Bool gf_media_aom_probe_annexb(GF_BitStream *bs)
 			}
 
 			if (has_size) {
-				obu_length = (u32)gf_av1_leb128_read(bs, NULL);
+				obu_length = gf_av1_leb128_read(bs, NULL);
+				if (obu_length > GF_UINT_MAX) {
+					res = GF_FALSE;
+					break;
+				}
 			}
 			else {
 				if (obu_length >= 1 + extflag) {
@@ -4482,7 +4486,15 @@ GF_Err gf_av1_parse_obu(GF_BitStream *bs, ObuType *obu_type, u64 *obu_size, u32 
 
 	//at this point obu_size is either zero or the size of the containing buffer (likely the Temporal Unit)
 	if (state->obu_has_size_field) {
-		*obu_size = (u32)gf_av1_leb128_read(bs, NULL);
+		/*the OBU length is a 64-bit LEB128 value but GPAC stores and copies it
+		in 32-bit containers; reject values that cannot be represented instead
+		of silently truncating them, which would desync allocation and copy sizes*/
+		*obu_size = gf_av1_leb128_read(bs, NULL);
+		if (*obu_size > GF_UINT_MAX) {
+			GF_LOG(GF_LOG_ERROR, GF_LOG_CODING, ("[AV1] OBU size "LLU" exceeds 32-bit limit, rejecting\n", *obu_size));
+			gf_bs_seek(bs, pos);
+			return GF_NON_COMPLIANT_BITSTREAM;
+		}
 	}
 	else {
 		if (*obu_size >= 1 + state->obu_extension_flag) {

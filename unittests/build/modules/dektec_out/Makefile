@@ -1,0 +1,1 @@
+/home/feedback/feedback/uidreczz28aIhEHuRks/modules/dektec_out/Makefile
