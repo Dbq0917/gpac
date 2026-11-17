@@ -1,0 +1,1 @@
+/home/feedback/feedback/uidreczz28aIhEHveM3/static.mak
