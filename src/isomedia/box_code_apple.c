@@ -414,6 +414,7 @@ void databox_box_del(GF_Box *s)
 
 }
 
+GF_NOT_EXPORTED
 GF_Err databox_box_read(GF_Box *s,GF_BitStream *bs)
 {
 	GF_DataBox *ptr = (GF_DataBox *)s;
@@ -422,11 +423,18 @@ GF_Err databox_box_read(GF_Box *s,GF_BitStream *bs)
 	ptr->locale = gf_bs_read_u32(bs);
 
 	if (ptr->size) {
+		if (ptr->size > 0xFFFFFFFE) {
+			GF_LOG(GF_LOG_ERROR, GF_LOG_CONTAINER, ("[iso file] Invalid size %llu in data box, cannot exceed 0xFFFFFFFE\n", ptr->size));
+			return GF_ISOM_INVALID_FILE;
+		}
 		ptr->dataSize = (u32) ptr->size;
 		ptr->data = (char*)gf_malloc(ptr->dataSize * sizeof(ptr->data[0]) + 1);
 		if (!ptr->data) return GF_OUT_OF_MEM;
 		ptr->data[ptr->dataSize] = 0;
-		gf_bs_read_data(bs, ptr->data, ptr->dataSize);
+		if (gf_bs_read_data(bs, ptr->data, ptr->dataSize) != ptr->dataSize) {
+			GF_LOG(GF_LOG_ERROR, GF_LOG_CONTAINER, ("[iso file] Truncated data box, could not read %u bytes\n", ptr->dataSize));
+			return GF_ISOM_INVALID_FILE;
+		}
 	}
 
 	return GF_OK;
