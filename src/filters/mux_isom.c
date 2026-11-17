@@ -7710,6 +7710,19 @@ static void mp4_mux_update_init_edit(GF_MP4MuxCtx *ctx, TrackWriter *tkw, u64 mi
 	//negative could happen due to rounding, ignore them
 	if (dts_diff <= (gf_sys_old_arch_compat() ? 0 : 1)) return;
 
+	//When writing independent split files (non-DASH file rotation driven by PCK_FILENUM),
+	//each output file after the first one starts on its own timeline rebased to 0 by the
+	//reframer. At a split boundary the first packet of a stream only lands on that stream's
+	//frame boundaries (audio frame size, video SAP), which generally does not match the
+	//exact split point of the other streams. Emitting an empty edit here would re-introduce
+	//this boundary offset (including codec priming delay) on every segment; concatenating the
+	//files would then insert a growing gap at each boundary. Keep each split track starting
+	//at 0 and preserve regular timeline alignment only for the first file and for non-splitting
+	//(single-file, DASH/tfdt) muxing paths.
+	if (!ctx->dash_mode && (ctx->cur_file_idx_plus_one > 1)) {
+		return;
+	}
+
 	// dts_diff > 0, we need to delay the track
 	u64 dur = gf_timestamp_rescale(dts_diff, tkw->src_timescale, ctx->moovts);
 	if (dur) {

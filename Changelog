@@ -27,6 +27,7 @@
 - Improved GHI demuxer for manifest regeneration
 - Allow `ffavf to be used as source
 - Added tolerance for sfrag mode in `mp4mx` to align to sap frames
+- Fixed growing audio (and inter-stream) gap at each boundary when splitting into independent ISOBMFF files, by no longer re-introducing a per-segment empty edit on rotated output files
 
 ## Other
 - Added MP4Box option for automatic track reordering
